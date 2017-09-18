@@ -1,5 +1,7 @@
 # Semver Resource
 
+NOTE: This is forked from concourse/semver-resource and has additional functionality to assume IAM roles. Initial credentials are loaded from EC2 instance role.
+
 A resource for managing a version number. Persists the version number in one of several backing stores.
 
 
@@ -60,6 +62,9 @@ the bucket.
 
 * `server_side_encryption`: *Optional.* The server-side encryption algorithm
 used when storing the version object (e.g. `AES256`, `aws:kms`).
+
+* `role_arn`: *Optional.* ARN of IAM role to assume when accessing S3. Useful for cross-account access. Takes initial credentials from EC2 instance role.
+
 
 ### `swift` Driver
 

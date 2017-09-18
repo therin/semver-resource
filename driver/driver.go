@@ -2,9 +2,11 @@ package driver
 
 import (
 	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials/ec2rolecreds"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
+	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/blang/semver"
@@ -37,9 +39,35 @@ func FromSource(source models.Source) (Driver, error) {
 	case models.DriverUnspecified, models.DriverS3:
 		var creds *credentials.Credentials
 
+		sess := session.Must(session.NewSession())
+
 		if source.AccessKeyID == "" && source.SecretAccessKey == "" {
-			creds = credentials.AnonymousCredentials
+			if source.RoleArn == "" {
+				creds = credentials.AnonymousCredentials
+			} else {
+				// Initial credentials loaded from EC2 instance
+				// role. These credentials will be used to make the STS Assume Role API.
+
+				creds = credentials.NewCredentials(
+					&ec2rolecreds.EC2RoleProvider{
+						Client: ec2metadata.New(session.New()),
+					},
+				)
+				_, err := creds.Get()
+				// If unsuccessful fall back to anonymous
+				if err != nil {
+					creds = credentials.AnonymousCredentials
+				} else {
+					creds = credentials.NewStaticCredentials(source.AccessKeyID, source.SecretAccessKey, "")
+				}
+
+				// Create the credentials from AssumeRoleProvider to assume the role
+				// referenced by RoleArn.
+				creds = stscreds.NewCredentials(sess, source.RoleArn)
+
+			}
 		} else {
+			// Use provided AWS keys
 			creds = credentials.NewStaticCredentials(source.AccessKeyID, source.SecretAccessKey, "")
 		}
 
@@ -60,17 +88,18 @@ func FromSource(source models.Source) (Driver, error) {
 			awsConfig.Endpoint = aws.String(source.Endpoint)
 		}
 
-		svc := s3.New(session.New(awsConfig))
+		svc := s3.New(sess, awsConfig)
+		// Create service client value configured for credentials
+		// from assumed role.
+		// svc := s3.New(sess, &aws.Config{Credentials: creds})
 
 		return &S3Driver{
-			InitialVersion: initialVersion,
-
+			InitialVersion:       initialVersion,
 			Svc:                  svc,
 			BucketName:           source.Bucket,
 			Key:                  source.Key,
 			ServerSideEncryption: source.ServerSideEncryption,
 		}, nil
-
 	case models.DriverGit:
 		return &GitDriver{
 			InitialVersion: initialVersion,
