@@ -43,11 +43,15 @@ func FromSource(source models.Source) (Driver, error) {
 
 		if source.AccessKeyID == "" && source.SecretAccessKey == "" {
 			if source.RoleArn == "" {
-				creds = credentials.AnonymousCredentials
+				// Load credentials from instance profile
+				creds = credentials.NewCredentials(
+					&ec2rolecreds.EC2RoleProvider{
+						Client: ec2metadata.New(session.New()),
+					},
+				)
 			} else {
 				// Initial credentials loaded from EC2 instance
 				// role. These credentials will be used to make the STS Assume Role API.
-
 				creds = credentials.NewCredentials(
 					&ec2rolecreds.EC2RoleProvider{
 						Client: ec2metadata.New(session.New()),
